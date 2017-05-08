@@ -2121,6 +2121,7 @@ void R_Init(void)
 	R_InitBloomTextures();
 }
 
+GLint portal_depth = 0;
 void R_RenderScene(void)
 {
 	extern void Skins_PreCache(void);
@@ -2138,10 +2139,12 @@ void R_RenderScene(void)
 	R_MarkLeaves ();	// done here so we know if we're in water
 
 	Skins_PreCache ();  // preache skins if needed
+    
 
 	R_DrawWorld ();		// adds static entities to the list
 
-	R_DrawEntitiesOnList (&cl_visents);
+
+    R_DrawEntitiesOnList (&cl_visents);
 	R_DrawEntitiesOnList (&cl_alphaents);	
 
 	R_DrawWaterSurfaces ();
@@ -2164,6 +2167,105 @@ void R_RenderScene(void)
 	{
 		glDisable(GL_FOG);
 	}
+    glDisable(GL_DEPTH_TEST);
+
+//    glClear(GL_COLOR_BUFFER_BIT);
+    vec3_t vieworg;
+    mleaf_t* l1 = r_viewleaf;
+    mleaf_t* l2 = r_viewleaf2;
+    mleaf_t* ol1 = r_oldviewleaf;
+    mleaf_t* ol2 = r_oldviewleaf2;
+
+    VectorCopy(r_refdef.vieworg, vieworg);
+    for (int i = 0; i < cl_portalents.count; i++)
+	{
+        entity_t* pe = &cl_portalents.list[i];
+        portal_info_t* here = pe->model->portaldata;
+        portal_info_t* there = pe->model->portaldata->target_info;
+
+        glEnable(GL_STENCIL_TEST);
+        glStencilFunc(GL_ALWAYS, i+1, 0xff);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glDepthMask(GL_FALSE);
+
+//        glCullFace(GL_BACK);
+//        glPolygonMode(GL_FRONT, GL_FILL);
+        R_DrawBrushModel(pe);
+//        glCullFace(GL_FRONT);
+
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDepthMask(GL_TRUE);
+        glStencilFunc(GL_EQUAL, i+1, 0xff);
+
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+
+        vec3_t offset;
+        // offset = vieworg - origin
+        VectorSubtract(vieworg,  here->origin, offset);
+        // r_origin = destination + offset
+        VectorAdd(there->origin, offset, r_refdef.vieworg);
+        VectorCopy(r_refdef.vieworg, r_origin);
+
+        vec3_t foo;
+        foo[0] = 0;
+        foo[1] = 0;
+        foo[2] = 0;
+//        VectorCopy(foo, r_refdef.viewangles);
+//        AngleVectors (foo, vpn, vright, vup);
+        R_SetupFrame();
+        R_SetFrustum();
+
+        r_oldviewleaf = NULL;
+        r_oldviewleaf2 = NULL;
+        r_viewleaf = Mod_PointInLeaf (there->origin, cl.worldmodel);
+        r_viewleaf2 = r_viewleaf;
+        R_MarkLeaves ();	// done here so we know if we're in water
+
+        Skins_PreCache ();  // preache skins if needed
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity ();
+
+	glRotatef (-90, 1, 0, 0);	    // put Z going up
+	glRotatef (90,  0, 0, 1);	    // put Z going up
+	glRotatef (-r_refdef.viewangles[2], 1, 0, 0);
+	glRotatef (-r_refdef.viewangles[0], 0, 1, 0);
+	glRotatef (-r_refdef.viewangles[1], 0, 0, 1);
+	glTranslatef (-r_refdef.vieworg[0], -r_refdef.vieworg[1], -r_refdef.vieworg[2]);
+
+	glGetFloatv (GL_MODELVIEW_MATRIX, r_world_matrix);
+
+
+        R_DrawWorld ();		// adds static entities to the list
+        R_DrawEntitiesOnList (&cl_visents);
+        R_DrawEntitiesOnList (&cl_alphaents);
+        R_DrawWaterSurfaces ();
+    }
+
+
+    glDisable(GL_STENCIL_TEST);
+    VectorCopy(vieworg, r_refdef.vieworg);
+
+    r_viewleaf = l1;
+    r_viewleaf2 = l2;
+    r_oldviewleaf = ol1;
+    r_oldviewleaf2 = ol2;
+    R_MarkLeaves ();	// done here so we know if we're in water
+
+    glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity ();
+
+	glRotatef (-90, 1, 0, 0);	    // put Z going up
+	glRotatef (90,  0, 0, 1);	    // put Z going up
+	glRotatef (-r_refdef.viewangles[2], 1, 0, 0);
+	glRotatef (-r_refdef.viewangles[0], 0, 1, 0);
+	glRotatef (-r_refdef.viewangles[1], 0, 0, 1);
+	glTranslatef (-r_refdef.vieworg[0], -r_refdef.vieworg[1], -r_refdef.vieworg[2]);
+
+	glGetFloatv (GL_MODELVIEW_MATRIX, r_world_matrix);
 }
 
 void OnChange_gl_clearColor(cvar_t *v, char *s, qbool *cancel) {
@@ -2201,6 +2303,7 @@ void R_Clear(void)
 	}
 
 	clearbits |= GL_DEPTH_BUFFER_BIT;
+	clearbits |= GL_STENCIL_BUFFER_BIT;
 	glClear (clearbits);
 	gldepthmin = 0;
 	gldepthmax = 1;

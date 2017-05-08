@@ -180,3 +180,27 @@ int	D_SurfaceCacheForRes (int width, int height);
 void D_FlushCaches (void);
 void D_InitCaches (void *buffer, int size);
 void R_SetVrect (vrect_t *pvrect, vrect_t *pvrectin, int lineadj);
+
+#define MAX_PORTALS 32
+typedef struct portal_info_s portal_info_t;
+
+typedef struct model_s model_t;
+
+struct portal_info_s {
+    qbool visible;
+    vec3_t origin;
+
+    char target[64];
+    char targetname[64];
+    char modelname[64];
+    struct centity_t* cent;
+    portal_info_t* target_info;
+    model_t* model;
+};
+
+extern portal_info_t gl_portals[MAX_PORTALS];
+extern int gl_portal_count;
+
+// from ktx/g_spawn.c
+#define	MAX_SPAWN_VARS			64
+#define	MAX_SPAWN_VARS_CHARS	4096

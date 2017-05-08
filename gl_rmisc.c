@@ -30,6 +30,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "tr_types.h"
 #endif
 
+void Mod_ResetPortals(void);
+
 void R_InitOtherTextures (void) {
 /*	static const int flags = TEX_MIPMAP | TEX_ALPHA | TEX_COMPLAIN;
 

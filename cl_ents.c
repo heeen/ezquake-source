@@ -152,10 +152,14 @@ void CL_InitEnts(void) {
 	cl_alphaents.max = 64;
 	cl_alphaents.alpha = 1;
 
-	memalloc = (byte *) Hunk_AllocName((cl_firstpassents.max + cl_visents.max + cl_alphaents.max) * sizeof(entity_t), "visents");
+    cl_portalents.max = 64;
+	cl_portalents.alpha = 0;
+
+	memalloc = (byte *) Hunk_AllocName((cl_firstpassents.max + cl_visents.max + cl_alphaents.max + cl_portalents.max) * sizeof(entity_t), "visents");
 	cl_firstpassents.list = (entity_t *) memalloc;
 	cl_visents.list = (entity_t *) memalloc + cl_firstpassents.max;
 	cl_alphaents.list = (entity_t *) memalloc + cl_firstpassents.max + cl_visents.max;
+	cl_portalents.list = (entity_t *) memalloc + cl_firstpassents.max + cl_visents.max + cl_alphaents.max;
 
 	CL_ClearScene();
 }
@@ -172,13 +176,17 @@ static qbool is_monster (int modelindex)
 }
 
 void CL_ClearScene (void) {
-	cl_firstpassents.count = cl_visents.count = cl_alphaents.count = 0;
+	cl_firstpassents.count = cl_visents.count = cl_alphaents.count = cl_portalents.count = 0;
 }
 
 void CL_AddEntity (entity_t *ent) {
 	visentlist_t *vislist;
 
-	if ((ent->effects & (EF_BLUE | EF_RED | EF_GREEN)) && bound(0, gl_powerupshells.value, 1)) {
+    if(ent->effects == (EF_BLUE | EF_RED | EF_DIMLIGHT)) {
+//        Com_DPrintf("portal %p %s\n", ent, ent->model->name);
+        vislist = &cl_portalents;
+    }
+    else if ((ent->effects & (EF_BLUE | EF_RED | EF_GREEN)) && bound(0, gl_powerupshells.value, 1)) {
 		vislist = &cl_visents;
 	}
 	else if (ent->renderfx & RF_NORMALENT) {
@@ -191,6 +199,9 @@ void CL_AddEntity (entity_t *ent) {
 		vislist = &cl_firstpassents;
 		ent->renderfx |= RF_NOSHADOW;
 	}
+    else if(ent->model->portaldata) {
+        vislist = &cl_portalents;
+    }
 	else {
 		vislist = &cl_visents;
 	}

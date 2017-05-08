@@ -33,6 +33,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "utils.h"
 
 
+
+portal_info_t gl_portals[MAX_PORTALS];
+int gl_portal_count = 0;
+
+static void Mod_ParseWadsFromEntityLump (char** keys, char** values, int numpairs);
+static void Mod_RegisterPortal(char** keys, char** values, int numpairs);
+static void Mod_LinkPortals(void);
+static void Mod_CheckPortalModel(model_t* model);
+static void Mod_ResetPortals(void);
+
 //VULT MODELS
 void Mod_AddModelFlags(model_t *mod);
 
@@ -905,52 +915,102 @@ void Mod_LoadVisibility (lump_t *l) {
 }
 
 
-static void Mod_ParseWadsFromEntityLump (lump_t *l)
+static void Mod_ParseEntityLump (lump_t *lump)
 {
-	char *data;
-	char *s, key[1024], value[1024];
-	int i, j, k;
+    printf("Parse entities\n");
+    char* data;
+    char* keys[MAX_SPAWN_VARS];
+    char* values[MAX_SPAWN_VARS];
+    char spawnVars[MAX_SPAWN_VARS_CHARS];
+    char* writeDest = spawnVars;
+    char* writeEnd = spawnVars + MAX_SPAWN_VARS_CHARS - 1;
 
-	if (!l->filelen)
-		return;
+    char* classname = 0;
 
-	data = (char *)(mod_base + l->fileofs);
-	data = COM_Parse(data);
-	if (!data)
-		return;
+    if(!lump->filelen)
+        return;
 
-	if (com_token[0] != '{')
-		return; // error
+    Mod_ResetPortals();
 
-	while (1) {
-		if (!(data = COM_Parse(data)))
-			return; // error
+    data = (char *)(mod_base + lump->fileofs);
 
-		if (com_token[0] == '}')
-			break; // end of worldspawn
+    // begin entity string
+    data = COM_Parse(data);
+    int fieldindex = 0;
+    int token_len = 0;
 
-		strlcpy(key, (com_token[0] == '_') ? com_token + 1 : com_token, sizeof(key));
+    while(com_token[0] == '{') {
+        // begin entity spawn vars
+        fieldindex = 0;
+        data = COM_Parse(data);
+        while(com_token[0] != '}' && fieldindex < MAX_SPAWN_VARS) {
+            token_len = strlen(com_token) + 1;
+            if(writeDest + token_len > writeEnd)
+                return;
+            strlcpy(writeDest, com_token, writeEnd - writeDest);
+            keys[fieldindex] = writeDest;
+            writeDest += token_len;
 
-		for (s = key + strlen(key) - 1; s >= key && *s == ' '; s--)		// remove trailing spaces
-			*s = 0;
+            data = COM_Parse(data);
+            if(com_token[0] == '}') return; // error - missing value token!
 
-		if (!(data = COM_Parse(data)))
-			return; // error
+            token_len = strlen(com_token) + 1;
+            if(writeDest + token_len > writeEnd)
+                return;
+            strlcpy(writeDest, com_token, writeEnd - writeDest);
+            values[fieldindex] = writeDest;
+            writeDest += token_len;
 
-		strlcpy(value, com_token, sizeof(value));
+            if(strcmp("classname", keys[fieldindex]) == 0) {
+                classname = values[fieldindex];
+            }
+            fieldindex++;
+            data = COM_Parse(data);
+        } // entity finished
 
-		if (!strcmp("sky", key) || !strcmp("skyname", key))
+        if(strcmp(classname, "worldspawn") == 0) {
+            if (loadmodel->bspversion == HL_BSPVERSION) {
+                Mod_ParseWadsFromEntityLump(keys, values, fieldindex);
+            }
+        }
+        // add code for handling map entities client side here
+
+        if(strcmp(classname, "func_portal") == 0) {
+            Mod_RegisterPortal(keys, values, fieldindex);
+        }
+
+        data = COM_Parse(data);
+    }// lump finished
+
+    Mod_LinkPortals();
+}
+
+static void Mod_ParseWadsFromEntityLump (char** keys, char** values, int numpairs)
+{
+    printf("parse wads %i\n", numpairs);
+
+    for(int n = 0; n < numpairs; n++) {
+        char* key = keys[n];
+        char* value = values[n];
+        if(key[0] == '_') key++;
+
+		if (strcmp("sky", key) == 0
+         || strcmp("skyname", key) == 0) {
 			Cvar_Set(&r_skyname, value);
+        }
 
-		if (!strcmp("wad", key)) {
-			j = 0;
-			for (i = 0; i < strlen(value); i++) {
+        if (strcmp("wad", key) == 0) {
+            int i = 0;
+			int j = 0;
+            int k = 0;
+            int len = strlen(value);
+			for (i = 0; i < len; i++) {
 				if (value[i] != ';' && value[i] != '\\' && value[i] != '/' && value[i] != ':')
 					break;
 			}
 			if (!value[i])
 				continue;
-			for ( ; i < sizeof(value); i++) {
+			for ( ; i < len; i++) {
 				// ignore path - the \\ check is for HalfLife... stupid windoze 'programmers'...
 				if (value[i] == '\\' || value[i] == '/' || value[i] == ':') {
 					j = i + 1;
@@ -958,14 +1018,17 @@ static void Mod_ParseWadsFromEntityLump (lump_t *l)
 					k = value[i];
 					value[i] = 0;
 					if (value[j])
-						WAD3_LoadWadFile (value + j);
+                    	if (loadmodel->bspversion == HL_BSPVERSION || 1) {
+                            printf("WAD: <%s>\n", &value[j]);
+					    	WAD3_LoadWadFile (&value[j]);
+                        }
 					j = i + 1;
 					if (!k)
 						break;
 				}
 			}
-		}
-	}
+        }
+    }
 }
 
 void Mod_LoadVertexes (lump_t *l) {
@@ -1688,8 +1751,10 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer, int filesize) {
 		Mod_LoadEdges(&header->lumps[LUMP_EDGES]);
 	}
 	Mod_LoadSurfedges (&header->lumps[LUMP_SURFEDGES]);
-	if (loadmodel->bspversion == HL_BSPVERSION)
-		Mod_ParseWadsFromEntityLump (&header->lumps[LUMP_ENTITIES]);
+    if(loadmodel->isworldmodel) {
+        // can a non-world model contain entities and do we care?
+        Mod_ParseEntityLump (&header->lumps[LUMP_ENTITIES]);
+    }
 	Mod_LoadTextures (&header->lumps[LUMP_TEXTURES]);
 	Mod_LoadLighting (&header->lumps[LUMP_LIGHTING]);
 	Mod_LoadPlanes (&header->lumps[LUMP_PLANES]);
@@ -1746,6 +1811,7 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer, int filesize) {
 			*loadmodel = *mod;
 			strlcpy (loadmodel->name, name, sizeof (loadmodel->name));
 			mod = loadmodel;
+            Mod_CheckPortalModel(mod);
 		}
 	}
 }
@@ -2613,5 +2679,60 @@ int Mod_LoadSimpleTexture(model_t *mod, int skinnum)
 		Com_DPrintf("%s\n", tex ? "OK" : "FAIL");
 
 	return tex;
+}
+
+
+static void Mod_ResetPortals(void) {
+    printf("RESET\n");
+    gl_portal_count = 0;
+    memset(gl_portals, 0, sizeof(gl_portals));
+}
+
+static void Mod_RegisterPortal(char** keys, char** values, int numpairs) {
+    printf("REGISTER\n");
+    if(gl_portal_count == MAX_PORTALS) {
+        Com_DPrintf("%s: too many portals, max=%i",__func__,MAX_PORTALS);
+        return;
+    }
+    portal_info_t* p = &gl_portals[gl_portal_count];
+    for(int i = 0; i < numpairs; i++) {
+        char* key = keys[i];
+        char* value = values[i];
+        if(strcmp(key, "target") == 0) strlcpy(p->target, value, sizeof(p->target));
+        if(strcmp(key, "targetname") == 0) strlcpy(p->targetname, value, sizeof(p->targetname));
+        if(strcmp(key, "model") == 0) strlcpy(p->modelname, value, sizeof(p->modelname));
+    }
+    printf("created portal %i, name:%s target:%s model %s\n",gl_portal_count, p->targetname, p->target, p->modelname);
+    gl_portal_count++;
+}
+
+static void Mod_LinkPortals(void) {
+    printf("LINK\n");
+    for(int i = 0; i < gl_portal_count; i++) {
+        portal_info_t *t1 = &gl_portals[i];
+        for(int j = 0; j < gl_portal_count; j++) {
+            portal_info_t *t2 = &gl_portals[j];
+            if(strcmp(t1->target, t2->targetname) == 0 && strlen(t1->target) > 0){
+                printf("linked portal %i -> %i\n",i,j);
+                t1->target_info = t2;
+                t2->target_info = t1;
+            }
+        }
+    }
+}
+
+static void Mod_CheckPortalModel(model_t* model) {
+    printf("checking %s\n", model->name);
+    for(int i = 0; i < gl_portal_count; i++) {
+        portal_info_t *p = &gl_portals[i];
+        if(strcmp(p->modelname, model->name) == 0) {
+            p->model = model;
+            p->origin[0] = model->mins[0];
+            p->origin[1] = model->mins[1];
+            p->origin[2] = model->mins[2];
+            printf("found model for portal %i, mins (%f,%f,%f)\n", i, model->mins[0], model->mins[1], model->mins[2]);
+            model->portaldata = p;
+        }
+    }
 }
 

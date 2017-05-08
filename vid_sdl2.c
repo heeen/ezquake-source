@@ -940,6 +940,8 @@ static void VID_SDL_GL_SetupAttributes(void)
 	if (r_24bit_depth.integer == 1) {
 		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 	} /* else, SDL2 defaults to 16 */
+
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 }
 
 static int VID_SetWindowIcon(SDL_Window *sdl_window)

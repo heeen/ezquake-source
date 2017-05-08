@@ -615,7 +615,7 @@ typedef struct visentlist_s {
 	int			alpha;
 } visentlist_t;
 
-extern visentlist_t cl_firstpassents, cl_visents, cl_alphaents;
+extern visentlist_t cl_firstpassents, cl_visents, cl_alphaents, cl_portalents;
 
 // ezQuake cvars
 extern cvar_t cl_floodprot;

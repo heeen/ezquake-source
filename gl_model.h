@@ -431,6 +431,7 @@ typedef struct model_s {
 	// additional model data
 	cache_user_t		cache; // only access through Mod_Extradata
 
+    struct portal_info_s* portaldata;
 } model_t;
 
 //============================================================================

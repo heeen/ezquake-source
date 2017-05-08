@@ -230,6 +230,7 @@ unsigned int cl_dlight_active[MAX_DLIGHTS/32];
 
 // refresh list
 visentlist_t	cl_firstpassents, cl_visents, cl_alphaents;
+visentlist_t	cl_portalents; // source portal entities
 
 double		connect_time = 0;		// for connection retransmits
 qbool		connected_via_proxy = false;
